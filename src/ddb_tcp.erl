@@ -26,6 +26,7 @@
 -define(TIMEOUT, 30000).
 
 -export([
+         connect/3,
          connect/2,
          connect/1,
          mode/1,
@@ -55,7 +56,8 @@
          bucket,
          error = none,
          delay = 1,
-         batch = false}).
+         batch = false,
+         auto_reconnect = true}).
 
 %%--------------------------------------------------------------------
 %% @type connection().
@@ -74,6 +76,12 @@
 %%
 %% To test for connection use {@link connected/1}.
 %%
+%% Opts might contain {auto_reconnect, boolean()}.
+%% False flag will cause send errors to bubble up to the library user.
+%% True will cause a reconnection on error.
+%% Default is true to maintain compatibility with the behaviour present
+%% before the flag was introduced.
+%%
 %% @end
 %%--------------------------------------------------------------------
 -spec connect(Host :: inet:ip_address() | inet:hostname(),
@@ -81,12 +89,22 @@
                      {ok, connection()}.
 
 connect(Host, Port) ->
+    connect(Host, Port, []).
+
+-spec connect(Host :: inet:ip_address() | inet:hostname(),
+              Port :: inet:port_number(),
+              Opts :: [{auto_reconnect, boolean()}]) ->
+                     {ok, connection()}.
+
+connect(Host, Port, Opts) ->
     case gen_tcp:connect(Host, Port, ?OPTS) of
         {ok, Socket} ->
             {ok, #ddb_connection{
                     socket = Socket,
                     host = Host,
-                    port = Port
+                    port = Port,
+                    auto_reconnect = proplists:get_value(auto_reconnect, Opts,
+                                                         true)
                    }};
         {error, E} ->
             {ok, #ddb_connection{
@@ -423,12 +441,15 @@ send_bin(Bin, Con = #ddb_connection{socket = undefined}) ->
     send1(Bin, reconnect(Con));
 
 send_bin(Bin, Con = #ddb_connection{socket = Sock}) ->
-    case gen_tcp:send(Sock, Bin) of
-        {error, _E} ->
+    case {Con#ddb_connection.auto_reconnect, gen_tcp:send(Sock, Bin)} of
+        {false, {error, E}} ->
+            {error, E, (close(Con))#ddb_connection{error = E}};
+        {true, {error, _E}} ->
             send1(Bin, reconnect(close(Con)));
         _ ->
             {ok, Con}
     end.
+
 send1(_Bin, Con = #ddb_connection{socket = undefined, error = E}) ->
     {error, E, Con};
 
@@ -442,6 +463,9 @@ send1(Bin, Con = #ddb_connection{socket = Sock}) ->
 
 -spec reconnect(connection()) ->
                        connection().
+reconnect(#ddb_connection{auto_reconnect = false = AutoReconnect}) ->
+    error({reconnect_called, {auto_reconnect, AutoReconnect}});
+
 reconnect(Con = #ddb_connection{socket = undefined,
                                 host = Host,
                                 port = Port}) ->
