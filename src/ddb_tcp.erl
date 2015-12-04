@@ -67,7 +67,11 @@
 %%--------------------------------------------------------------------
 -opaque connection() :: #ddb_connection{}.
 
--define(OPTS, [binary, {packet, 4}, {active, false}]).
+-define(OPTS, [binary,
+               {packet, 4},
+               {active, false},
+               {send_timeout, 1000},
+               {send_timeout_close, true}]).
 
 %%--------------------------------------------------------------------
 %% @doc Connects to a DalmatinerDB instance. It will try to create a
