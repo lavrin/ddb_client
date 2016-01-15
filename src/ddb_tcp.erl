@@ -37,6 +37,7 @@
          list/3,
          get/5,
          send/4,
+         flush/1,
          batch_start/2,
          batch/2,
          batch/3,
@@ -397,6 +398,23 @@ send(Metric, Time, Points, Con = #ddb_connection{mode = stream}) ->
     send_bin(dproto_tcp:encode({stream, Metric, Time, Points}), Con);
 
 send(_, _, _, Con) ->
+    {error, no_stream, Con}.
+
+%%--------------------------------------------------------------------
+%% @doc Flush the connection without closing it.
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec flush(Connection :: connection()) -> Result when
+      Result :: {ok, Connection :: connection()}
+              | {error, Error :: inet:posix(), Connection :: connection()}
+              | {error, no_stream, Connection :: connection()}.
+
+flush(Con = #ddb_connection{batch = Time}) when is_integer(Time) ->
+    {error, {batch, Time}, Con};
+flush(Con = #ddb_connection{mode = stream}) ->
+    send_bin(dproto_tcp:encode(flush), Con);
+flush(Con) ->
     {error, no_stream, Con}.
 
 %%--------------------------------------------------------------------
